@@ -1,6 +1,4 @@
 import cv2
-from matplotlib.pyplot import hsv
-from matplotlib.pyplot import hsv
 import numpy as np
 import os
 import time
