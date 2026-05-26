@@ -18,11 +18,11 @@ try:
     
     # Convert HEIC files to JPG
     print("\nConverting HEIC files to JPG...")
-    heic_files = [f for f in os.listdir("photos/") if f.lower().endswith((".heic", ".heif"))]
+    heic_files = [f for f in os.listdir("Old GP Photos/") if f.lower().endswith((".heic", ".heif"))]
     
     for heic_file in heic_files:
-        heic_path = os.path.join("photos/", heic_file)
-        jpg_path = os.path.join("photos/", os.path.splitext(heic_file)[0] + ".jpg")
+        heic_path = os.path.join("Old GP Photos/", heic_file)
+        jpg_path = os.path.join("Old GP Photos/", os.path.splitext(heic_file)[0] + ".jpg")
         
         try:
             image = Image.open(heic_path)

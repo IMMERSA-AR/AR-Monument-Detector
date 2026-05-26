@@ -1,0 +1,14 @@
+# Generated panel datasets
+/data/yolo/panel/
+/data/processed/panel/
+
+# Generated obelisk data
+/data/processed/obelisk/
+/obelisk
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.env
