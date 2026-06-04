@@ -1,42 +1,53 @@
-"""
-create_zip.py
-=============
-Creates panel_augmented_dataset.zip with UNIX-style forward-slash paths.
-
-PowerShell's Compress-Archive writes Windows backslashes inside the zip,
-which causes Python's zipfile on Linux (Colab) to treat them as literal
-filename characters instead of directory separators.
-
-This script uses Python's zipfile module directly, which always writes
-forward slashes — compatible with Linux, macOS, and Windows.
-
-Usage (run from ObeliskScene root):
-    python panel\\create_zip.py
-"""
-
-import zipfile
 import os
+import zipfile
 
-SOURCE_DIR = "panel/panel_augmented_dataset"
-OUTPUT_ZIP = "panel/panel_augmented_dataset.zip"
 
-if not os.path.isdir(SOURCE_DIR):
-    print(f"ERROR: '{SOURCE_DIR}' not found. Run from ObeliskScene root.")
-    raise SystemExit(1)
+DATASETS = [
+    {
+        "name":       "obelisk",
+        "source_dir": "data/processed/obelisk/augmented",
+        "output_zip": "data/processed/obelisk/obelisk_augmented_dataset.zip",
+    },
+    {
+        "name":       "panel",
+        "source_dir": "data/processed/panel/augmented",
+        "output_zip": "data/processed/panel/panel_augmented_dataset.zip",
+    },
+]
 
-file_count = 0
 
-with zipfile.ZipFile(OUTPUT_ZIP, "w", zipfile.ZIP_DEFLATED) as zf:
-    for dirpath, dirnames, filenames in os.walk(SOURCE_DIR):
-        for fname in filenames:
-            abs_path = os.path.join(dirpath, fname)
-            # arcname uses forward slashes (replace OS separator)
-            arcname = abs_path.replace("\\", "/")
-            zf.write(abs_path, arcname)
-            file_count += 1
+def create_zip(source_dir, output_zip):
+    file_count = 0
+    os.makedirs(os.path.dirname(output_zip), exist_ok=True)
 
-size_mb = os.path.getsize(OUTPUT_ZIP) / 1e6
-print(f"Created: {OUTPUT_ZIP}")
-print(f"Files  : {file_count}")
-print(f"Size   : {size_mb:.1f} MB")
-print("(This zip uses forward-slash paths -- safe to extract on Linux/Colab)")
+    with zipfile.ZipFile(output_zip, "w", zipfile.ZIP_DEFLATED) as zf:
+        for dirpath, _, filenames in os.walk(source_dir):
+            for fname in filenames:
+                abs_path = os.path.join(dirpath, fname)
+                arcname  = abs_path.replace("\\", "/")   
+                zf.write(abs_path, arcname)
+                file_count += 1
+
+    size_mb = os.path.getsize(output_zip) / 1e6
+    return file_count, size_mb
+
+created = 0
+skipped = 0
+
+for ds in DATASETS:
+    name       = ds["name"]
+    source_dir = ds["source_dir"]
+    output_zip = ds["output_zip"]
+
+    if not os.path.isdir(source_dir):
+        print(f"Skip {name:8s}, '{source_dir}' not found. " f"Run augment.py first.")
+        skipped += 1
+        continue
+
+    print(f"Zip {name:8s}, compressing '{source_dir}' ...")
+    file_count, size_mb = create_zip(source_dir, output_zip)
+    print(f"Created : {output_zip}, Files   : {file_count}, Size: {size_mb:.1f} MB")
+    created += 1
+
+print()
+print(f"Done. {created} zip(s) created, {skipped} skipped.")
