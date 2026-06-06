@@ -186,9 +186,6 @@ data/processed/panel/augmented/     images/train,val   labels/train,val   data.y
 
 **File:** `yolo/export_zip.py`
 
-Creates zip files with Unix forward-slash paths so they extract correctly on Linux (Google Colab).
-PowerShell's built-in Compress-Archive writes Windows backslashes which break on Linux - this script avoids that.
-
 **Output:**
 
 ```
@@ -209,22 +206,13 @@ MyDrive/GP/panel_augmented_dataset.zip
 
 ---
 
-### Step 7 - Train on Google Colab
+### Step 7 - Train on Kaggle
 
 **File:** `yolo/train.py`
 
 1. Open Kaggle
 2. Set **Runtime -> Change runtime type -> T4 GPU**
 3. Upload and run `yolo/train.py` cell by cell
-
-<!-- The script will:
-
-- Mount Google Drive and extract both zips
-- Merge the two datasets, remapping panel classes by +1 so they do not collide with obelisk (class 0)
-- Train a **YOLOv8s** model for 100 epochs across all 10 classes
-- Validate and print mAP, Precision, Recall
-- Export `best.onnx` (opset 12, simplified - compatible with Unity Sentis)
-- Save everything to `MyDrive/GP/combined_model_outputs/` -->
 
 **Outputs saved to Google Drive:**
 
