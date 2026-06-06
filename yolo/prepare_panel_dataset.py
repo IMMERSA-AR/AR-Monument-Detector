@@ -56,29 +56,22 @@ if PROJECT_ROOT not in sys.path:
 
 from detection.panel.pipeline import PanelDetector
 
-
-# ── Configuration ──────────────────────────────────────────────────────────
-
 OLD_GP_PHOTOS_FOLDER = "data/raw/panel"
 OUTPUT_FOLDER        = "data/yolo/panel"
 
-# Panel names — must match the ALPHABETICAL order of image files.
-# IMG_7066.jpg -> class 0, IMG_7067.jpg -> class 1, ... IMG_7074.jpg -> class 8
-# Edit these names to match the actual content of each panel.
 PANEL_NAMES = [
-    "College History Text",        # class 0 — IMG_7066.jpg
-    "University Dome Building",    # class 1 — IMG_7067.jpg
-    "Mechanical Engineering",      # class 2 — IMG_7068.jpg
-    "Gate and Mining Cart",        # class 3 — IMG_7069.jpg
-    "Hydraulics and Tile Work",    # class 4 — IMG_7070.jpg
-    "Architecture and Ornament Studies",      # class 5 — IMG_7071.jpg
-    "Survey Instrument and Classical Facades", # class 6 — IMG_7072.jpg
-    "Corinthian Capital and Industrial Machinery", # class 7 — IMG_7073.jpg
-    "Steam Engine and Polytechnique Relief",  # class 8 — IMG_7074.jpg
+    "Architecture and Ornament Studies",       
+    "College History Text",                       
+    "Corinthian Capital and Industrial Machinery", 
+    "Gate and Mining Cart",                       
+    "Hydraulics and Tile Work",                  
+    "Mechanical Engineering",                      
+    "Steam Engine and Polytechnique Relief",       
+    "Survey Instrument and Classical Facades",    
+    "University Dome Building",                    
 ]
 
 
-# ── Helpers ────────────────────────────────────────────────────────────────
 
 def build_output_dirs():
     os.makedirs(os.path.join(OUTPUT_FOLDER, "images"),   exist_ok=True)
@@ -87,20 +80,11 @@ def build_output_dirs():
 
 
 def write_yolo_label(label_path, class_id, bbox):
-    """
-    Write one YOLO label file for a single detected object.
-
-    YOLO format (one line per object):
-        class_id  cx  cy  width  height
-    All values are normalized 0.0 - 1.0.
-    class_id is an integer (0 = first panel, 1 = second panel, etc.)
-    """
     cx = float(bbox["cx"])
     cy = float(bbox["cy"])
     w  = float(bbox["width"])
     h  = float(bbox["height"])
 
-    # Clamp to valid range — just in case the detector goes slightly outside
     cx = max(0.0, min(1.0, cx))
     cy = max(0.0, min(1.0, cy))
     w  = max(0.001, min(1.0, w))
@@ -111,43 +95,30 @@ def write_yolo_label(label_path, class_id, bbox):
 
 
 def draw_bbox(frame, class_id, class_name, bbox, score, stage):
-    """
-    Draw the bounding box on a copy of the frame for visual review.
-    Green box  = bounding box
-    Yellow dot = center point
-    Label shows class name, class ID, RANSAC score, and detection stage.
-    """
     vis = frame.copy()
     fh, fw = vis.shape[:2]
 
-    x  = int(bbox["x"]      * fw)
-    y  = int(bbox["y"]      * fh)
+    x  = int(bbox["x"]* fw)
+    y  = int(bbox["y"] * fh)
     x2 = int((bbox["x"] + bbox["width"])  * fw)
     y2 = int((bbox["y"] + bbox["height"]) * fh)
     cx_px = int(bbox["cx"] * fw)
     cy_px = int(bbox["cy"] * fh)
 
-    # Bounding box
     cv2.rectangle(vis, (x, y), (x2, y2), (0, 255, 0), 4)
-
-    # Center dot
     cv2.circle(vis, (cx_px, cy_px), 10, (0, 255, 255), -1)
-
-    # Label
     label = f"[{class_id}] {class_name}  score={score}  [{stage}]"
-    cv2.putText(vis, label, (x, max(0, y - 14)),
-                cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), 3)
+    cv2.putText(vis, label, (x, max(0, y - 14)),cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), 3)
 
     return vis
 
 
 def write_data_yaml(class_names):
-    """Write data.yaml that YOLO and Roboflow understand."""
     data = {
         "path"  : os.path.abspath(OUTPUT_FOLDER),
-        "train" : "images",   # flat structure — Roboflow will split into train/val
-        "val"   : "images",
-        "nc"    : len(class_names),
+        "train": "images",  
+        "val" : "images",
+        "nc": len(class_names),
         "names" : class_names,
     }
     yaml_path = os.path.join(OUTPUT_FOLDER, "data.yaml")
@@ -156,22 +127,14 @@ def write_data_yaml(class_names):
     return yaml_path
 
 
-# ── Main ───────────────────────────────────────────────────────────────────
-
 def main():
-
-    # ── Sanity check ───────────────────────────────────────────────
     if not os.path.isdir(OLD_GP_PHOTOS_FOLDER):
         print(f"ERROR: Folder '{OLD_GP_PHOTOS_FOLDER}/' not found.")
         sys.exit(1)
 
     build_output_dirs()
 
-    # ── Collect image files (sorted = ground-truth class order) ────
-    all_files = sorted(
-        f for f in os.listdir(OLD_GP_PHOTOS_FOLDER)
-        if f.lower().endswith((".jpg", ".jpeg", ".png"))
-    )
+    all_files = sorted(f for f in os.listdir(OLD_GP_PHOTOS_FOLDER) if f.lower().endswith((".jpg", ".jpeg", ".png")))
 
     if not all_files:
         print(f"ERROR: No images found in '{OLD_GP_PHOTOS_FOLDER}/'.")
@@ -183,21 +146,12 @@ def main():
         print(f"  [{idx}] {fname}  ->  '{name}'")
     print()
 
-    # ── Load PanelDetector (used for Stage 1 bounding boxes) ───────
-    detector = PanelDetector(
-        references_folder = OLD_GP_PHOTOS_FOLDER,
-        panel_names       = PANEL_NAMES,
-        min_inliers       = 10,
-        ratio_threshold   = 0.75,
-    )
+    detector = PanelDetector(references_folder = OLD_GP_PHOTOS_FOLDER,panel_names= PANEL_NAMES, min_inliers  = 10,ratio_threshold   = 0.75,)
 
-    # ── Process each image ──────────────────────────────────────────
     success = []
     failed  = []
 
     for idx, fname in enumerate(all_files):
-
-        # Ground-truth class ID = alphabetical file index
         class_id   = idx
         class_name = PANEL_NAMES[idx] if idx < len(PANEL_NAMES) else f"Panel {idx}"
 
@@ -205,30 +159,22 @@ def main():
         frame    = cv2.imread(src_path)
 
         if frame is None:
-            print(f"  SKIP   [{class_id}] {fname}  (cannot read)")
+            print(f"skip [{class_id}] {fname} ")
             failed.append((fname, class_id, "cannot read file"))
             continue
 
-        # ── Run full detector to get bbox ───────────────────────────
         result = detector.detect(frame)
 
         if result["detected"]:
-            bbox   = result["bbox"]
-            score  = result["score"]
-            stage  = result["stage"]
-
-            # Warn if the detector's panel_id does not match the expected class_id.
-            # This should never happen since each image matches itself, but
-            # it is a useful sanity check.
+            bbox = result["bbox"]
+            score = result["score"]
+            stage = result["stage"]
             if result["panel_id"] != class_id:
-                print(f"  WARN   [{class_id}] {fname}  "
-                      f"detector returned panel_id={result['panel_id']} "
-                      f"(expected {class_id}) — using file index as ground truth")
+                print(f" warn[{class_id}] {fname},detector returned panel_id={result['panel_id']} ")
 
-            # Write YOLO label with ground-truth class_id
-            stem      = os.path.splitext(fname)[0]
-            label_path  = os.path.join(OUTPUT_FOLDER, "labels",   stem + ".txt")
-            image_path  = os.path.join(OUTPUT_FOLDER, "images",   fname)
+            stem= os.path.splitext(fname)[0]
+            label_path = os.path.join(OUTPUT_FOLDER, "labels",   stem + ".txt")
+            image_path = os.path.join(OUTPUT_FOLDER, "images",   fname)
             preview_path = os.path.join(OUTPUT_FOLDER, "previews", fname)
 
             write_yolo_label(label_path, class_id, bbox)
@@ -238,16 +184,10 @@ def main():
             cv2.imwrite(preview_path, preview)
 
             success.append((fname, class_id, class_name, bbox, score))
-            print(f"  OK     [{class_id}] {fname:<20}  "
-                  f"'{class_name}'  score={score}  [{stage}]")
+            print(f" ok[{class_id}] {fname:<20} ")
 
         else:
-            # Stage 1 failed AND Stage 2 fallback also failed.
-            # Fall back to using the full image as the bounding box.
-            # This gives YOLO the whole image labeled as that class — not ideal,
-            # but better than skipping the image entirely.
-            print(f"  NOBOX  [{class_id}] {fname}  "
-                  f"{result['reason']}  -> using full-frame bbox as fallback")
+            print(f"  NOBOX  [{class_id}] {fname}")
 
             fallback_bbox = {
                 "x": 0.0, "y": 0.0,
@@ -273,60 +213,8 @@ def main():
 
             failed.append((fname, class_id, result["reason"]))
 
-    # ── data.yaml ──────────────────────────────────────────────────
-    names_used = [
-        PANEL_NAMES[i] if i < len(PANEL_NAMES) else f"Panel {i}"
-        for i in range(len(all_files))
-    ]
+    names_used = [PANEL_NAMES[i] if i < len(PANEL_NAMES) else f"Panel {i}" for i in range(len(all_files))]
     yaml_path = write_data_yaml(names_used)
-
-    # ── Report ─────────────────────────────────────────────────────
-    report = [
-        "Panel YOLO Dataset Report",
-        "=" * 50,
-        f"Source folder  : {OLD_GP_PHOTOS_FOLDER}/",
-        f"Output folder  : {OUTPUT_FOLDER}/",
-        f"Total images   : {len(all_files)}",
-        f"Labeled (OK)   : {len(success)}",
-        f"Fallback bbox  : {len(failed)}",
-        f"Classes        : {len(all_files)}",
-        "",
-        "Class mapping (class_id -> panel name -> filename)",
-        "-" * 50,
-    ]
-    for idx, fname in enumerate(all_files):
-        name = PANEL_NAMES[idx] if idx < len(PANEL_NAMES) else f"Panel {idx}"
-        report.append(f"  {idx}  {name:<30}  {fname}")
-
-    if failed:
-        report += ["", "Fallback images (check previews — orange box = full frame used)", "-" * 50]
-        for fname, class_id, reason in failed:
-            report.append(f"  [{class_id}] {fname}  {reason}")
-
-    report_path = os.path.join(OUTPUT_FOLDER, "report.txt")
-    with open(report_path, "w") as f:
-        f.write("\n".join(report) + "\n")
-
-    # ── Summary ────────────────────────────────────────────────────
-    print(f"\n{'=' * 55}")
-    print(f"Done.  {len(success)}/{len(all_files)} images labeled correctly.")
-    if failed:
-        print(f"       {len(failed)} images used full-frame fallback (check previews).")
-    print(f"\nOutput:")
-    print(f"  Images   : {OUTPUT_FOLDER}/images/")
-    print(f"  Labels   : {OUTPUT_FOLDER}/labels/")
-    print(f"  Previews : {OUTPUT_FOLDER}/previews/  <- REVIEW THESE FIRST")
-    print(f"  YAML     : {yaml_path}")
-    print(f"  Report   : {report_path}")
-    print(f"\nNext step — upload to Roboflow for augmentation:")
-    print(f"  1. Go to roboflow.com -> New Project -> Object Detection")
-    print(f"  2. Upload the contents of '{OUTPUT_FOLDER}/'")
-    print(f"  3. Apply augmentations (brightness, perspective, noise, blur, crop)")
-    print(f"  4. Generate dataset -> Export as YOLOv8 format")
-    print(f"  5. Download the zip -> train with:")
-    print(f"     yolo train model=yolov8n.pt data=data.yaml epochs=100 imgsz=640")
-    print(f"{'=' * 55}")
-
 
 if __name__ == "__main__":
     main()

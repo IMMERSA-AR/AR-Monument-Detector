@@ -1,49 +1,3 @@
-"""
-detection/panel/augment.py
-==========================
-Generates augmented YOLO training datasets for BOTH the panel and obelisk
-sources.  Each source gets its own output folder:
-
-  data/processed/panel/augmented/
-      images/train/   images/val/
-      labels/train/   labels/val/
-      data.yaml
-
-  data/processed/obelisk/augmented/
-      images/train/   images/val/
-      labels/train/   labels/val/
-      data.yaml
-
-Memory-efficient design
------------------------
-Each source image is read from disk ONCE.  All of its augmented variants
-are generated and saved immediately, so only one source image is in RAM
-at any time.
-
-The train / val split is pre-computed from a shuffled plan so the split
-is random even though we process source images sequentially.
-
-Augmentations
--------------
-Pixel-only  (bbox unchanged):
-  brightness   -- multiply pixels by a random factor  0.4 - 1.6
-  contrast     -- linear stretch  alpha * img + beta
-  noise        -- additive Gaussian noise
-  blur         -- Gaussian blur with a random kernel
-  hsv_jitter   -- random hue / saturation / value shift
-  grayscale    -- convert to gray and back to BGR
-  shadow       -- apply a random dark vertical band
-
-Geometric  (bbox corners transformed, new axis-aligned bbox computed):
-  rotate       -- rotate +-15 degrees around image centre
-  perspective  -- random perspective warp (up to 8 % corner shift)
-  crop         -- zoom into the image (60-90 %), resize back
-
-Usage (run from ObeliskScene root)
------------------------------------
-  python detection\\panel\\augment.py
-"""
-
 import cv2
 import numpy as np
 import os
@@ -74,25 +28,11 @@ DATASETS = [
 SAVE_SIZE    = 640
 VALIDATION_FRACTION = 0.20
 SEED         = 42
-MIN_BOX_AREA = 0.02   # skip augmented sample if any GT box covers < 2 % of the image
-               # (prevents saving crops where the obelisk is barely visible)
+MIN_BOX_AREA = 0.02  
 
 # Helper Functions
 
 def read_label(path: str) -> list:
-    """
-    Read a YOLO-format label file and return all bounding boxes inside it.
-
-    Args: 
-        path : Full path to the .txt label file.
-
-    Returns:
-        list of [class_id, cx, cy, w, h]
-            - class_id : int, object class 
-            - cx, cy   : float, bounding box centre as fraction of image width/height
-            - w, h     : float, bounding box size  as fraction of image width/height
-    """
-
     rows = []
     if not os.path.exists(path):
         return rows
@@ -105,16 +45,6 @@ def read_label(path: str) -> list:
 
 
 def write_label(path: str, bboxes: list) -> None:
-    """
-    Write list of [class_id, cx, cy, w, h] in YOLO format.
-    
-    Args:
-        path   : Full path to the output .txt label file.
-        bboxes : list of [class_id, cx, cy, w, h]
-            - class_id : int, object class
-            - cx, cy   : float, bounding box centre as fraction of image width/height
-            - w, h     : float, bounding box size  as fraction of image width/height
-    """
     with open(path, "w") as f:
         for b in bboxes:
             f.write(f"{int(b[0])} {b[1]:.6f} {b[2]:.6f} "
@@ -124,34 +54,12 @@ def write_label(path: str, bboxes: list) -> None:
 #  Bounding-box geometry helpers
 
 def yolo_to_corners(bbox: list, W: int, H: int) -> np.ndarray:
-    """
-    Convert a YOLO bounding box into its 4 pixel corner coordinates.
-
-    Args:
-        bbox : [cx, cy, w, h]
-        W : Image width  in pixels.
-        H : Image height in pixels.
-
-    Returns:
-        np.ndarray of shape (4, 2), dtype float32. Pixel coordinates [[TL], [TR], [BR], [BL]].
-    """
     cx, cy, bw, bh = bbox
     cx *= W;  cy *= H;  bw *= W;  bh *= H
     return np.array([ [cx - bw/2, cy - bh/2], [cx + bw/2, cy - bh/2], [cx + bw/2, cy + bh/2],[cx - bw/2, cy + bh/2],], dtype=np.float32)
 
 
 def corners_to_yolo(corners: np.ndarray, W: int, H: int):
-    """
-    Convert 4 pixel corner coordinates back into a YOLO bounding box.
-
-    Args:
-        corners : np.ndarray of shape (4, 2). Pixel (x, y) coordinates of the 4 corners after transformation.
-        W : Image width  in pixels.
-        H : Image height in pixels.
-
-    Returns:
-        [cx, cy, w, h]: normalised YOLO box, or None if the resulting box has zero area.
-    """
     xs = np.clip(corners[:, 0], 0, W)   
     ys = np.clip(corners[:, 1], 0, H)   
     x1, x2 = xs.min(), xs.max()         
@@ -208,7 +116,6 @@ def aug_hsv(img, bboxes):
 
 
 def aug_shadow(img, bboxes):
-    """Dark vertical band simulating a cast shadow."""
     out = img.copy().astype(np.float32)
     W   = img.shape[1]
     x1  = random.randint(0, W // 2)
@@ -220,7 +127,6 @@ def aug_shadow(img, bboxes):
 #  Geometric augmentations 
 
 def aug_rotate(img, bboxes):
-    """Rotate ±15 degrees around image centre."""
     H, W  = img.shape[:2]
     angle = random.uniform(-15.0, 15.0)
     M     = cv2.getRotationMatrix2D((W / 2, H / 2), angle, 1.0)
@@ -237,7 +143,6 @@ def aug_rotate(img, bboxes):
 
 
 def aug_perspective(img, bboxes):
-    """Random perspective warp — perturb each corner by up to 8 %."""
     H, W = img.shape[:2]
     d    = int(min(W, H) * 0.08)
     src  = np.float32([[0, 0], [W, 0], [W, H], [0, H]])
@@ -255,7 +160,6 @@ def aug_perspective(img, bboxes):
 
 
 def aug_crop(img, bboxes):
-    """Zoom in by cropping 60-90 % of the image and resizing back."""
     H, W  = img.shape[:2]
     scale = random.uniform(0.60, 0.90)
     cW, cH = int(W * scale), int(H * scale)
@@ -299,11 +203,6 @@ GEO_AUGS   = [aug_rotate, aug_perspective, aug_crop]
 
 
 def augment_once(img: np.ndarray, bboxes: list) -> tuple:
-    """
-    Random augmentation chain:
-      Step 1 -- 1 to 3 pixel augmentations (always applied).
-      Step 2 -- one geometric augmentation with 70 % probability.
-    """
     out_img    = img.copy()
     out_bboxes = [list(b) for b in bboxes]
 
@@ -319,17 +218,12 @@ def augment_once(img: np.ndarray, bboxes: list) -> tuple:
 
 
 def save_sample(img: np.ndarray, bboxes: list, img_out: str, lbl_out: str) -> None:
-    """Resize to SAVE_SIZE × SAVE_SIZE, write JPEG + YOLO label."""
     sq = cv2.resize(img, (SAVE_SIZE, SAVE_SIZE), interpolation=cv2.INTER_LINEAR)
     cv2.imwrite(img_out, sq, [cv2.IMWRITE_JPEG_QUALITY, 92])
     write_label(lbl_out, bboxes)
 
 
 def run_augmentation(cfg: dict) -> bool:
-    """
-    Augment one dataset according to the given config dict.
-    Returns True if augmentation ran, False if skipped.
-    """
     name            = cfg["name"]
     input_images    = cfg["input_images"]
     input_labels    = cfg["input_labels"]
@@ -337,7 +231,6 @@ def run_augmentation(cfg: dict) -> bool:
     output_dir      = cfg["output_dir"]
     augs_per_image  = cfg["augs_per_image"]
 
-    # ── Skip gracefully if input folders are missing ─────────────────────────
     missing = []
     if not os.path.isdir(input_images):
         missing.append(f"images folder '{input_images}'")
@@ -357,7 +250,6 @@ def run_augmentation(cfg: dict) -> bool:
     print(f"  Input   : {input_images}")
     print(f"  Output  : {output_dir}")
 
-    # Create output folders
     for split in ("train", "val"):
         os.makedirs(os.path.join(output_dir, "images", split), exist_ok=True)
         os.makedirs(os.path.join(output_dir, "labels", split), exist_ok=True)
@@ -368,13 +260,6 @@ def run_augmentation(cfg: dict) -> bool:
         return
 
     total = len(img_files) * (1 + augs_per_image)
-    print(f"  Source images   : {len(img_files)}")
-    print(f"  Augs per image  : {augs_per_image}")
-    print(f"  Total planned   : {total}  (inc. originals)")
-    print(f"  Save size       : {SAVE_SIZE} x {SAVE_SIZE} px")
-    print()
-
-    # ── Pre-compute train / val assignment ──────────────────────────────────
     plan = []
     for fi, fname in enumerate(img_files):
         plan.append((fi, -1))                          # original
@@ -384,12 +269,11 @@ def run_augmentation(cfg: dict) -> bool:
     random.shuffle(plan)
     n_val = int(len(plan) * VALIDATION_FRACTION)
 
-    assignment = defaultdict(list)   # fi -> [(aug_idx, split), ...]
+    assignment = defaultdict(list)   
     for rank, (fi, aug_idx) in enumerate(plan):
         split = "val" if rank < n_val else "train"
         assignment[fi].append((aug_idx, split))
 
-    # ── Process each source image once ──────────────────────────────────────
     saved = {"train": 0, "val": 0}
 
     for fi, fname in enumerate(img_files):
@@ -417,10 +301,6 @@ def run_augmentation(cfg: dict) -> bool:
                 out_img, out_bboxes = augment_once(img, bboxes)
                 out_stem = f"{stem}_aug{aug_idx:04d}"
 
-            # Skip if any GT box shrank below the minimum area threshold.
-            # This happens when a crop augmentation pushes the object to the
-            # image edge, leaving only a sliver of the bounding box visible.
-            # The model still detects the full shape → low IoU → false error.
             if any(b[3] * b[4] < MIN_BOX_AREA for b in out_bboxes):
                 continue
 
@@ -434,7 +314,6 @@ def run_augmentation(cfg: dict) -> bool:
         print(f"  {fname:<28}  class {bboxes[0][0]}  "
               f"train={n_tr:3d}  val={n_vl:3d}")
 
-    # ── Write data.yaml ─────────────────────────────────────────────────────
     if os.path.exists(data_yaml_src):
         with open(data_yaml_src) as f:
             data = yaml.safe_load(f)

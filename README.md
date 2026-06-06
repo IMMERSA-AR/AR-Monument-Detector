@@ -1,159 +1,261 @@
-# Overview
+# AR Monument Detector
 
-# Project Structure
+This repository contains the full data pipeline for training a YOLOv8 object detection model that recognises **obelisks** and **information panels** in real-world photos.
+The trained model is exported to ONNX and used inside a **Meta Quest Augmented Reality app** (Unity Sentis) to trigger AR experiences when the user points their headset at the obelisk or one of its surrounding panels.
 
-## Panel Processing Pipeline
+---
 
-The panel detection system follows this architecture:
-
-```
-detection/panel/pipeline.py
-    ├── PanelDetector class
-    ├── Stage 1: Localization
-        └── Find black metal frame and extract panel region(homography warp)
-    └── Stage 2: Identification
-        └── Match panel against references using SIFT + RANSAC
-        └── Output: Which panel + bounding box coordinates
-        ↓ (Algorithm used by)
-yolo/prepare_panel_dataset.py
-    ├── Applies PanelDetector to 9 raw photos
-    ├── Generates YOLO-format training labels
-    └── Output: data/yolo/panel/ (9 labeled images)
-        ↓ (Data augmented by)
-detection/panel/augment.py
-    ├── Creates 120 variants per image
-    ├── Applies geometric & pixel augmentations
-    |── Generates train/val split (80/20)
-    └── Output: data/processed/panel/augmented/ (~1,089 training images)
-```
-
-## Directory Layout
+## What this repo does
 
 ```
-heritage-scene-recognition/
-├── detection/panel/          # Classical IP algorithms
-│   ├── pipeline.py          # PanelDetector class (localization + identification)
-│   └── augment.py           # Dataset augmentation script
-├── yolo/
-│   └── prepare_panel_dataset.py   # Script to generate YOLO labels using PanelDetector
+Raw photos
+    ↓
+Classical image processing  →  Auto-label images
+    ↓
+Manual correction (for obelisk)
+    ↓
+Data augmentation
+    ↓
+Export zips  →  Upload to Google Drive
+    ↓
+YOLOv8 training
+    ↓
+ONNX export  →  Drop into Unity Sentis
+```
+
+The pipeline handles two types of objects:
+
+| Class                                       | ID  | Source                                        |
+| ------------------------------------------- | --- | --------------------------------------------- |
+| Obelisk                                     | 0   | 69 real photos, auto-labelled by classical CV |
+| College History Text                        | 1   | Panel photos, manually labelled               |
+| University Dome Building                    | 2   | Panel photos, manually labelled               |
+| Mechanical Engineering                      | 3   | Panel photos, manually labelled               |
+| Gate and Mining Cart                        | 4   | Panel photos, manually labelled               |
+| Hydraulics and Tile Work                    | 5   | Panel photos, manually labelled               |
+| Architecture and Ornament Studies           | 6   | Panel photos, manually labelled               |
+| Survey Instrument and Classical Facades     | 7   | Panel photos, manually labelled               |
+| Corinthian Capital and Industrial Machinery | 8   | Panel photos, manually labelled               |
+| Steam Engine and Polytechnique Relief       | 9   | Panel photos, manually labelled               |
+
+---
+
+## Repository structure
+
+```
+ObeliskScene/
+│
 ├── data/
-│   ├── raw/panel/           # Input: 9 raw panel photos
-│   ├── yolo/panel/          # Generated: 9 labeled images from Stage 1
-│   └── processed/panel/augmented/  # Generated: ~1,089 augmented training images
-└── panel/                   # Legacy panel detection output folder
-```
-
-# Pipeline — Classical IP (Steps 1–9)
-
-# Pipeline — YOLO Fine-tuning
-
-# How to Run
-
-## Prerequisites
-
-Install required dependencies:
-
-```powershell
-pip install -r requirements.txt
-```
-
-This installs:
-
-- `opencv-contrib-python` - Computer vision library with SIFT feature matching
-- `numpy` - Numerical computing
-- `pyyaml` - YAML configuration file handling
-
-## Panel Detection Pipeline
-
-### Processing Stages
-
-**Stage 1: Generate YOLO Dataset from Raw Photos**
-
-Uses `PanelDetector` (classical IP algorithm) to label raw images:
-
-```powershell
-python yolo/prepare_panel_dataset.py
-```
-
-**What it does:**
-
-1. Loads 9 panel photos from `data/raw/panel/`
-2. Runs PanelDetector on each image:
-   - Localization: Finds and extracts the panel region
-   - Identification: Determines which of the 9 panels it is
-3. Generates YOLO-format labels from the detected bounding boxes
-4. Creates annotated preview images for visual verification
-5. Outputs to `data/yolo/panel/` (9 labeled images + metadata)
-
-**Output:**
-
-```
-data/yolo/panel/
-├── images/       (9 panel images)
-├── labels/       (9 YOLO .txt files)
-├── previews/     (9 annotated images)
-├── data.yaml     (YOLO dataset config)
-└── report.txt    (processing report)
+│   ├── raw/
+│   │   ├── obelisk/
+│   │   └── panel/
+│   │
+│   ├── yolo/
+│   │   ├── obelisk/
+│   │   │   ├── images/         <- copies of detected obelisk photos
+│   │   │   ├── labels/         <- YOLO .txt labels
+│   │   │   ├── previews/       <- annotated images for visual review
+│   │   │   └── data.yaml
+│   │   │
+│   │   └── panel/
+│   │       ├── images/         <- copies of detected panel photos
+│   │       ├── labels/         <- YOLO .txt labels
+│   │       ├── previews/       <- annotated images for visual review
+│   │       └── data.yaml
+│   │
+│   └── processed/
+│       ├── obelisk/
+│       │   ├── augmented/
+│       │   ├── debug/
+│       │   └── obelisk_augmented_dataset.zip
+│       │
+│       └── panel/
+│           ├── augmented/
+│           └── panel_augmented_dataset.zip
+│
+├── detection/
+│   ├── obelisk/
+│   │   └── pipeline.py
+│   ├── panel/
+│   │   └── pipeline.py
+│   └── augment.py
+│
+└── yolo/
+    ├── prepare_obelisk_dataset.py
+    ├── prepare_panel_dataset.py
+    ├── manual_label.py
+    ├── export_zip.py
+    ├── train.py
+    └── find_errors.py
 ```
 
 ---
 
-**Stage 2: Augment Dataset for Training**
+## Requirements
 
-Creates a large training dataset by applying augmentations:
-
-```powershell
-python detection/panel/augment.py
+```bash
+pip install opencv-contrib-python numpy pyyaml ultralytics
 ```
 
-**What it does:**
+For training (Kaggle):
 
-1. Reads the 9 labeled panels from `data/yolo/panel/` (output from Stage 1)
-2. Applies 120 augmentations per source image:
-   - Pixel-level: brightness, contrast, noise, blur, HSV jitter
-   - Geometric: rotation, perspective warp, crop/zoom
-3. Generates ~1,089 total images with automatic 80/20 train/val split
-4. Outputs to `data/processed/panel/augmented/` (ready for YOLO training)
+```bash
+pip install ultralytics onnxsim
+```
+
+---
+
+## Step-by-step pipeline
+
+### Step 1 - Prepare raw data
+
+Place all raw photos in the correct folders:
+
+- Obelisk photos: `data/raw/obelisk/`
+- Panel photos: `data/raw/panel/`
+
+### Step 2a - Auto-label obelisk images
+
+**File:** `yolo/prepare_obelisk_dataset.py`
+
+Runs the classical detection pipeline on all photos in `data/raw/obelisk/`.
+Uses computer vision (not ML) to find the obelisk tip and shaft, then writes a YOLO bounding box for each image.
 
 **Output:**
 
 ```
-data/processed/panel/augmented/
-├── images/
-│   ├── train/    (~870 augmented images)
-│   └── val/      (~219 augmented images)
-├── labels/
-│   ├── train/    (YOLO labels)
-│   └── val/
-└── data.yaml     (ready for YOLO training)
+data/yolo/obelisk/images/      <- copies of the photos
+data/yolo/obelisk/labels/      <- one .txt label per photo  (class 0)
+data/yolo/obelisk/previews/    <- green bounding box drawn on each photo
+data/processed/obelisk/debug/  <- intermediate debug images
 ```
 
-### Full Pipeline Workflow
+---
 
-Run the panel pipeline in sequence from the project root:
+### Step 2b - Auto-label panel images
 
-```powershell
-# Step 1: Generate labeled dataset using PanelDetector
-python yolo/prepare_panel_dataset.py
+**File:** `yolo/prepare_panel_dataset.py`
 
-# Step 2: Augment the labeled dataset for training
-python detection/panel/augment.py
+Runs the panel detector on all 9 photos in `data/raw/panel/`.
+Class ID is assigned by alphabetical file order.
+
+**Output:**
+
+```
+data/yolo/panel/images/      <- copies of the panel photos
+data/yolo/panel/labels/      <- one .txt label per photo  (classes 0-8)
+data/yolo/panel/previews/    <- annotated images for visual review
+data/yolo/panel/data.yaml    <- class names ready for training
 ```
 
-**What happens:**
+---
 
-1. `prepare_panel_dataset.py` uses `PanelDetector` to label 9 raw images → produces `data/yolo/panel/`
-2. `augment.py` reads from `data/yolo/panel/` and creates augmented variants → produces `data/processed/panel/augmented/`
+### Step 3 - Fix wrong or missed labels
 
-The final augmented dataset in `data/processed/panel/augmented/` is ready for YOLO model training.
+**File:** `yolo/manual_label.py`
 
-### Design Notes
+Run this for any image where the green box in Step 2 was wrong or missing.
+Lets you draw the correct bounding box by hand and saves it to `data/yolo/obelisk/labels/`.
 
-- All scripts work from the project root directory
-- They automatically locate data files and resolve import paths
-- Scripts can be run in sequence or independently (as long as prior steps completed)
-- PanelDetector uses classical image processing (SIFT + RANSAC) for robust panel detection
+---
 
-# Results
+### Step 4 - Augment both datasets
 
-# Team
+**File:** `detection/augment.py`
+
+Generates augmented training data for **both** obelisk and panel datasets.
+Augmentations include: brightness, contrast, noise, blur, grayscale, HSV jitter, shadow, rotation, perspective warp, and crop.
+
+| Dataset | Source images | Augs per image | Total  |
+| ------- | ------------- | -------------- | ------ |
+| Panel   | 9             | x 120          | ~1,089 |
+| Obelisk | 69            | x 15           | ~1,104 |
+
+Both datasets are balanced to ~1,100 images so neither class dominates training.
+
+**Output:**
+
+```
+data/processed/obelisk/augmented/   images/train,val   labels/train,val   data.yaml
+data/processed/panel/augmented/     images/train,val   labels/train,val   data.yaml
+```
+
+---
+
+### Step 5 - Export zips
+
+**File:** `yolo/export_zip.py`
+
+Creates zip files with Unix forward-slash paths so they extract correctly on Linux (Google Colab).
+PowerShell's built-in Compress-Archive writes Windows backslashes which break on Linux - this script avoids that.
+
+**Output:**
+
+```
+data/processed/obelisk/obelisk_augmented_dataset.zip
+data/processed/panel/panel_augmented_dataset.zip
+```
+
+---
+
+### Step 6 - Upload to Google Drive
+
+Upload both zips to Google Drive at exactly these paths:
+
+```
+MyDrive/GP/obelisk_augmented_dataset.zip
+MyDrive/GP/panel_augmented_dataset.zip
+```
+
+---
+
+### Step 7 - Train on Google Colab
+
+**File:** `yolo/train.py`
+
+1. Open Kaggle
+2. Set **Runtime -> Change runtime type -> T4 GPU**
+3. Upload and run `yolo/train.py` cell by cell
+
+<!-- The script will:
+
+- Mount Google Drive and extract both zips
+- Merge the two datasets, remapping panel classes by +1 so they do not collide with obelisk (class 0)
+- Train a **YOLOv8s** model for 100 epochs across all 10 classes
+- Validate and print mAP, Precision, Recall
+- Export `best.onnx` (opset 12, simplified - compatible with Unity Sentis)
+- Save everything to `MyDrive/GP/combined_model_outputs/` -->
+
+**Outputs saved to Google Drive:**
+
+```
+combined_model_outputs/
+    best.pt        <- PyTorch weights (for fine-tuning)
+    best.onnx      <- ONNX model     (drag into Unity Assets)
+    classes.txt    <- class names in order
+    training_run/  <- metrics, plots, confusion matrix
+```
+
+---
+
+### Step 8 - Verify the model (optional but recommended)
+
+**File:** `yolo/find_errors.py`
+
+1. Download `best.pt` from `MyDrive/GP/combined_model_outputs/`
+2. Place it at `yolo/best.pt`
+3. Run:
+
+Runs inference on the validation set and saves annotated images showing:
+
+- **Green box** = ground truth label
+- **Red box** = model prediction
+
+```
+data/processed/obelisk/error_analysis/
+    false_positives/   <- model detected obelisk where there is none
+    false_negatives/   <- real obelisk that the model missed
+    true_positives/    <- correct detections (reference)
+```
+
+---
